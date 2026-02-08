@@ -55,6 +55,12 @@ def parse_args():
         action="store_true",
         help="Only record frames when start.onnx detects 'started'.",
     )
+    parser.add_argument(
+        "--keymap",
+        type=str,
+        default="record_demo_keymap.json",
+        help="Path to keymap JSON file.",
+    )
     return parser.parse_args()
 
 
@@ -73,16 +79,22 @@ def _load_start_checker():
     return OnnxRunner(model_path, classes=["started"])
 
 
-def _print_controls(hero_type):
+def _print_controls(hero_type, keymap):
     print("\n================= 控制说明 =================")
-    print("移动: W/A/S/D (释放移动: 空格)")
-    print("攻击: J (普通攻击), K/L/U (技能1/2/3)")
+    print(f"移动: {keymap['move']} (释放移动: {keymap['stop']})")
+    print(
+        f"攻击: {keymap['attack']} (普通攻击), "
+        f"{keymap['skill1']}/{keymap['skill2']}/{keymap['skill3']} (技能1/2/3)"
+    )
     if hero_type == 4:
-        print("四技能英雄额外技能: I (技能4)")
-    print("小兵/塔: 1 (攻击小兵), 2 (攻击塔)")
-    print("回城/恢复: R (回城), T (恢复)")
-    print("信息类(信号/升级): G/H (发起进攻/开始撤退), 6/7/8/9 (升级技能)")
-    print("退出: Q")
+        print(f"四技能英雄额外技能: {keymap['skill4']} (技能4)")
+    print(f"小兵/塔: {keymap['attack_minion']} (攻击小兵), {keymap['attack_tower']} (攻击塔)")
+    print(f"回城/恢复: {keymap['recall']} (回城), {keymap['recover']} (恢复)")
+    print(
+        f"信息类(信号/升级): {keymap['signal_attack']}/{keymap['signal_retreat']} (发起进攻/开始撤退), "
+        f"{keymap['upgrade1']}/{keymap['upgrade2']}/{keymap['upgrade3']}/{keymap['upgrade4']} (升级技能)"
+    )
+    print(f"退出: {keymap['quit']}")
     print("============================================\n")
 
 
@@ -107,69 +119,104 @@ def _read_key():
     return None
 
 
-def _update_action_from_key(key, action_state, hero_type):
+def _update_action_from_key(key, action_state, hero_type, keymap):
     if key is None:
         return None
     key = key.lower()
     move_angles = {
-        "w": 270,
-        "a": 180,
-        "s": 90,
-        "d": 0,
+        keymap["move"][0].lower(): 270,
+        keymap["move"][1].lower(): 180,
+        keymap["move"][2].lower(): 90,
+        keymap["move"][3].lower(): 0,
     }
     if key in move_angles:
         action_state.move_action = 1
         action_state.angle = move_angles[key]
         return "move"
-    if key == " ":
+    if key == keymap["stop"].lower():
         action_state.move_action = 0
         return "stop"
-    if key == "j":
+    if key == keymap["attack"].lower():
         action_state.attack_action = 1
         return "attack"
-    if key == "k":
+    if key == keymap["skill1"].lower():
         action_state.attack_action = 8
         return "skill1"
-    if key == "l":
+    if key == keymap["skill2"].lower():
         action_state.attack_action = 9
         return "skill2"
-    if key == "u":
+    if key == keymap["skill3"].lower():
         action_state.attack_action = 10
         return "skill3"
-    if key == "i" and hero_type == 4:
+    if key == keymap["skill4"].lower() and hero_type == 4:
         action_state.attack_action = 11
         return "skill4"
-    if key == "1":
+    if key == keymap["attack_minion"].lower():
         action_state.attack_action = 2
         return "attack_minion"
-    if key == "2":
+    if key == keymap["attack_tower"].lower():
         action_state.attack_action = 3
         return "attack_tower"
-    if key == "r":
+    if key == keymap["recall"].lower():
         action_state.attack_action = 4
         return "recall"
-    if key == "t":
+    if key == keymap["recover"].lower():
         action_state.attack_action = 5
         return "recover"
-    if key == "g":
+    if key == keymap["signal_attack"].lower():
         action_state.info_action = 3
         return "signal_attack"
-    if key == "h":
+    if key == keymap["signal_retreat"].lower():
         action_state.info_action = 4
         return "signal_retreat"
-    if key == "6":
+    if key == keymap["upgrade1"].lower():
         action_state.info_action = 6
         return "upgrade1"
-    if key == "7":
+    if key == keymap["upgrade2"].lower():
         action_state.info_action = 7
         return "upgrade2"
-    if key == "8":
+    if key == keymap["upgrade3"].lower():
         action_state.info_action = 8
         return "upgrade3"
-    if key == "9" and hero_type == 4:
+    if key == keymap["upgrade4"].lower() and hero_type == 4:
         action_state.info_action = 9
         return "upgrade4"
     return None
+
+
+def _load_keymap(path):
+    default = {
+        "move": ["w", "a", "s", "d"],
+        "stop": " ",
+        "attack": "j",
+        "skill1": "k",
+        "skill2": "l",
+        "skill3": "u",
+        "skill4": "i",
+        "attack_minion": "1",
+        "attack_tower": "2",
+        "recall": "r",
+        "recover": "t",
+        "signal_attack": "g",
+        "signal_retreat": "h",
+        "upgrade1": "6",
+        "upgrade2": "7",
+        "upgrade3": "8",
+        "upgrade4": "9",
+        "quit": "q",
+    }
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(default, f, ensure_ascii=False, indent=2)
+        return default
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    for key, value in default.items():
+        if key not in data:
+            data[key] = value
+    if not isinstance(data["move"], list) or len(data["move"]) != 4:
+        data["move"] = default["move"]
+    return data
 
 
 def _dispatch_action(tool, action_state):
@@ -193,7 +240,8 @@ def main():
     args = parse_args()
     hero_type = global_args.hero_type
 
-    _print_controls(hero_type)
+    keymap = _load_keymap(args.keymap)
+    _print_controls(hero_type, keymap)
     start_checker = _load_start_checker() if args.require_started else None
 
     session_dir = os.path.join(args.out_dir, f"demo_{_now_ts()}")
@@ -207,15 +255,7 @@ def main():
         "require_started": args.require_started,
         "attack_actions_detail": attack_actions_detail,
         "info_actions_detail": info_actions_detail,
-        "controls": {
-            "move": {"w": 270, "a": 180, "s": 90, "d": 0},
-            "stop": "space",
-            "attack": "j",
-            "skill1": "k",
-            "skill2": "l",
-            "skill3": "u",
-            "skill4": "i",
-        },
+        "keymap": keymap,
     }
     with open(os.path.join(session_dir, "meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
@@ -241,7 +281,7 @@ def main():
                 print("收到退出指令，结束录制。")
                 break
 
-            _update_action_from_key(key, action_state, hero_type)
+            _update_action_from_key(key, action_state, hero_type, keymap)
 
             now = time.time()
             if now - last_frame_time < 1.0 / args.fps:
