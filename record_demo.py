@@ -91,6 +91,7 @@ def _print_controls(hero_type, keymap):
         print(f"四技能英雄额外技能: {keymap['skill4']} (技能4)")
     print(f"小兵/塔: {keymap['attack_minion']} (攻击小兵), {keymap['attack_tower']} (攻击塔)")
     print(f"回城/恢复: {keymap['recall']} (回城), {keymap['recover']} (恢复)")
+    print(f"召唤师/装备技能: {keymap['summoner']} (召唤师), {keymap['equipment']} (装备)")
     print(
         f"信息类(信号/升级): {keymap['signal_attack']}/{keymap['signal_retreat']}/{keymap['signal_collect']} "
         f"(发起进攻/开始撤退/请求集合), {keymap['upgrade1']}/{keymap['upgrade2']}/"
@@ -169,6 +170,12 @@ def _update_action_from_key(key, action_state, hero_type, keymap):
     if key == keymap["recover"].lower():
         action_state.attack_action = 5
         return "recover"
+    if key == keymap["equipment"].lower():
+        action_state.attack_action = 6
+        return "equipment"
+    if key == keymap["summoner"].lower():
+        action_state.attack_action = 7
+        return "summoner"
     if key == keymap["signal_attack"].lower():
         action_state.info_action = 3
         return "signal_attack"
@@ -212,6 +219,8 @@ def _load_keymap(path):
         "attack_tower": "x",
         "recall": "b",
         "recover": "c",
+        "equipment": "6",
+        "summoner": "f",
         "signal_attack": "h",
         "signal_retreat": "j",
         "signal_collect": "k",
