@@ -1,3 +1,7 @@
 .idea
 __pycache__
 status
+models/*.onnx
+models/*.pth
+src/*.pt
+debug_screenshots/

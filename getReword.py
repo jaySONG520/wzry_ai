@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
 import numpy as np
 import torch
-from ppocronnx import TextSystem
+from rapidocr_onnxruntime import RapidOCR
 
 from argparses import device
 from globalInfo import GlobalInfo
@@ -20,12 +20,69 @@ class GetRewordUtil:
         self.globalInfo = GlobalInfo()
         class_names = ['death']
         self.death_check = OnnxRunner('models/death.onnx', classes=class_names)
+        # 缓存 OCR 实例，避免每次调用都创建
+        self.ocr = RapidOCR()
+        
+        # HP 追踪变量（用于密集奖励）
+        self.last_my_hp = 100  # 上一帧自己血量百分比
+
+    def detect_my_hp(self, img):
+        """
+        检测自己英雄的血量百分比 (通过屏幕左下角血条颜色)
+        返回 0-100 的血量百分比
+        """
+        if img is None or img.size == 0:
+            return self.last_my_hp
+        
+        try:
+            image_height, image_width = img.shape[:2]
+            
+            # 自己血条位置 (根据用户提供的坐标)
+            # 左上角: (0.455, 0.372), 右下角: (0.553, 0.389)
+            left = int(image_width * 0.455)
+            top = int(image_height * 0.372)
+            right = int(image_width * 0.553)
+            bottom = int(image_height * 0.389)
+            
+            # 裁剪血条区域
+            hp_bar = img[top:bottom, left:right]
+            
+            if hp_bar is None or hp_bar.size == 0:
+                return self.last_my_hp
+            
+            # 转换到 HSV 检测绿色（满血）区域
+            hsv = cv2.cvtColor(hp_bar, cv2.COLOR_BGR2HSV)
+            
+            # 绿色范围 (血条颜色)
+            green_lower = np.array([35, 50, 50])
+            green_upper = np.array([85, 255, 255])
+            
+            # 创建掩码
+            mask = cv2.inRange(hsv, green_lower, green_upper)
+            
+            # 计算绿色像素占比
+            green_pixels = cv2.countNonZero(mask)
+            total_pixels = hp_bar.shape[0] * hp_bar.shape[1]
+            
+            if total_pixels == 0:
+                return self.last_my_hp
+            
+            hp_percentage = int((green_pixels / total_pixels) * 100)
+            return min(max(hp_percentage, 0), 100)
+            
+        except Exception as e:
+            return self.last_my_hp
 
     def predict(self, img):
+        if img is None or img.size == 0:
+            return False, 0
         is_attack, rewordCount = self.calculate_attack_reword(img)
         return is_attack, rewordCount
 
     def calculate_attack_reword(self, img):
+        # 检查图像是否为空
+        if img is None or img.size == 0:
+            return False, 0
 
         # 获取图像的尺寸
         image_height, image_width = img.shape[:2]
@@ -45,6 +102,10 @@ class GetRewordUtil:
 
         # 根据计算出的坐标裁剪图像
         cropped_img = img[top:bottom, left:right]
+
+        # 检查裁剪后的图像是否为空
+        if cropped_img is None or cropped_img.size == 0:
+            return False, 0
 
         # 将图片从BGR转换到HSV色彩空间
         hsv_image = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
@@ -116,34 +177,34 @@ class GetRewordUtil:
             move_action, angle, info_action, attack_action, action_type, arg1, arg2, arg3 = action
 
             if move_action == 0 and info_action == 0 and attack_action == 0:
-                rewordResult = -1
+                rewordResult = -10
             else:
-                rewordResult = -5
+                rewordResult = -30  # 增加死亡惩罚
 
         elif status_name == "successes":
-            rewordResult = 10000
+            rewordResult = 50  # 降低胜利奖励，避免 loss 爆炸
         elif status_name == "failed":
-            rewordResult = -10000
+            rewordResult = -50  # 降低失败惩罚
         elif status_name == "death":
             rewordResult = -1
 
         return rewordResult
 
     def check_finish(self, image):
-        text_sys = TextSystem()
-        res = text_sys.detect_and_ocr(image)
+        result, _ = self.ocr(image)
         done = 0
         class_name = None
-        for boxed_result in res:
-            # print("{}, {:.3f}".format(boxed_result.ocr_text, boxed_result.score))
-            if boxed_result.ocr_text == "胜利" or boxed_result.ocr_text == "VICTORY":
-                done = 1
-                class_name = 'successes'
-                break
-            elif boxed_result.ocr_text == "失败" or boxed_result.ocr_text == "DEFEAT":
-                done = 1
-                class_name = 'failed'
-                break
+        if result:
+            for line in result:
+                text = line[1]  # RapidOCR 返回格式: [box, text, score]
+                if text == "胜利" or text == "VICTORY":
+                    done = 1
+                    class_name = 'successes'
+                    break
+                elif text == "失败" or text == "DEFEAT":
+                    done = 1
+                    class_name = 'failed'
+                    break
         return done, class_name
 
     def check_death(self, image):
@@ -198,6 +259,27 @@ class GetRewordUtil:
 
         # 计算回报
         rewordCount = self.calculate_reword(class_name, attack_rewordCount, action)
+        
+        # 计算血量变化奖励（密集奖励）
+        current_hp = self.detect_my_hp(image)
+        hp_change = current_hp - self.last_my_hp
+        
+        if hp_change < 0:
+            # 受到伤害，给予惩罚（每损失1%血量扣0.5分）
+            hp_reward = hp_change * 0.5
+            rewordCount += hp_reward
+        elif hp_change > 0:
+            # 血量恢复，给予奖励（每恢复1%血量加0.3分）
+            hp_reward = hp_change * 0.3
+            rewordCount += hp_reward
+        
+        # 更新血量记录
+        self.last_my_hp = current_hp
+        
+        # 奖励归一化 + 裁剪 (将奖励限制在 [-1, +1] 范围)
+        # 除以50归一化，然后裁剪
+        normalized_reward = rewordCount / 50.0
+        final_reward = max(-1.0, min(1.0, normalized_reward))
 
-        return rewordCount, done, class_name
+        return final_reward, done, class_name
 

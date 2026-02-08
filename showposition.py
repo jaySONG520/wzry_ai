@@ -98,7 +98,7 @@ class ImageWidget(QWidget):
         print(coord_text)
 
     def refresh_devices(self):
-        result = subprocess.run(['adb', 'devices'], stdout=subprocess.PIPE)
+        result = subprocess.run(['scrcpy-win64-v2.0/adb', 'devices'], stdout=subprocess.PIPE)
         output = result.stdout.decode()
         devices = [line.split('\t')[0] for line in output.split('\n') if 'device' in line and not line.startswith('List')]
         self.deviceComboBox.clear()
@@ -110,7 +110,7 @@ class ImageWidget(QWidget):
             local_image_path = 'images/screen.png'
             if os.path.exists(local_image_path):
                 os.remove(local_image_path)
-            subprocess.run(['adb', '-s', device, 'exec-out', 'screencap -p'], stdout=open(local_image_path, 'wb'))
+            subprocess.run(['scrcpy-win64-v2.0/adb', '-s', device, 'exec-out', 'screencap -p'], stdout=open(local_image_path, 'wb'))
             self.load_image(local_image_path)
 
     def clear_coordinates(self):

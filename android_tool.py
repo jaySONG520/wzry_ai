@@ -149,7 +149,7 @@ class AndroidTool:
 
     def take_screenshot(self):
         try:
-            result = subprocess.run([f'{self.scrcpy_dir}/adb', 'exec-out', 'screencap', '-p'], capture_output=True,
+            result = subprocess.run([f'{self.scrcpy_dir}/adb', '-s', self.device_serial, 'exec-out', 'screencap', '-p'], capture_output=True,
                                     text=False)
 
             if result.returncode == 0:

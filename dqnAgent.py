@@ -11,7 +11,8 @@ from net_actor import NetDQN
 
 class DQNAgent:
     def __init__(self):
-        torch.backends.cudnn.enabled = False
+        torch.backends.cudnn.enabled = True  # 启用 cuDNN 加速
+        torch.backends.cudnn.benchmark = True  # 自动选择最优卷积算法
 
         self.action_sizes = [2, 360, 9, 11, 3, 360, 100, 5]
         self.device = device
@@ -28,7 +29,7 @@ class DQNAgent:
         self.policy_net = NetDQN().to(self.device)
         self.target_net = NetDQN().to(self.device)
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.learning_rate)
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.SmoothL1Loss()  # Huber Loss，比 MSE 更稳定
 
         if args.model_path and os.path.exists(args.model_path):
             self.policy_net.load_state_dict(torch.load(args.model_path))
@@ -109,6 +110,8 @@ class DQNAgent:
         # 优化模型
         self.optimizer.zero_grad()
         loss.backward()
+        # 梯度裁剪，防止梯度爆炸
+        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
 
         if self.epsilon > self.epsilon_min:

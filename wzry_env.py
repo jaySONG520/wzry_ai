@@ -55,10 +55,10 @@ class Environment():
         self.android_controller.action_attack(
             {"action": attack_action, "action_type": action_type, "arg1": arg1, "arg2": arg2, "arg3": arg3})
 
-        next_state = self.android_controller.screenshot_window()
+        next_state = self.android_controller.take_screenshot()
         while next_state is None or next_state.size == 0:
             time.sleep(0.01)
-            next_state = self.android_controller.screenshot_window()
+            next_state = self.android_controller.take_screenshot()
             continue
 
         reward, done, info = self.rewordUtil.get_reword(next_state, True, (
