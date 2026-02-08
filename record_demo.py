@@ -98,6 +98,10 @@ def _print_controls(hero_type, keymap):
         f"{keymap['upgrade3']}/{keymap['upgrade4']} (升级技能)"
     )
     print(f"购买装备: {keymap['buy1']} (装备1), {keymap['buy2']} (装备2)")
+    if keymap.get("record_start"):
+        print(f"开始录制: {keymap['record_start']}")
+    if keymap.get("record_stop"):
+        print(f"停止录制: {keymap['record_stop']}")
     if keymap.get("quit"):
         print(f"退出: {keymap['quit']}")
     else:
@@ -230,6 +234,8 @@ def _load_keymap(path):
         "upgrade4": "6",
         "buy1": "4",
         "buy2": "5",
+        "record_start": "=",
+        "record_stop": "-",
         "quit": "",
     }
     if not os.path.exists(path):
@@ -302,8 +308,14 @@ def main():
     frame_idx = 0
     start_time = time.time()
     last_frame_time = 0.0
-    print(f"开始录制: {session_dir}")
-    print("等待开始...按 Q 退出")
+    recording_enabled = True
+    if keymap.get("record_start") or keymap.get("record_stop"):
+        recording_enabled = False
+    print(f"录制目录: {session_dir}")
+    if recording_enabled:
+        print("已开始录制。")
+    else:
+        print("等待开始录制...按开始键启动。")
 
     try:
         while True:
@@ -315,6 +327,16 @@ def main():
             if keymap.get("quit") and key and key.lower() == keymap["quit"].lower():
                 print("收到退出指令，结束录制。")
                 break
+            if keymap.get("record_start") and key and key.lower() == keymap["record_start"].lower():
+                if not recording_enabled:
+                    recording_enabled = True
+                    print("已开始录制。")
+                continue
+            if keymap.get("record_stop") and key and key.lower() == keymap["record_stop"].lower():
+                if recording_enabled:
+                    recording_enabled = False
+                    print("已停止录制。")
+                continue
 
             _update_action_from_key(key, action_state, hero_type, keymap)
             if keymap["attack"] == "mouse_right" and _mouse_right_pressed():
@@ -325,6 +347,8 @@ def main():
                 time.sleep(0.001)
                 continue
             last_frame_time = now
+            if not recording_enabled:
+                continue
 
             frame = tool.take_screenshot()
             if frame is None:
