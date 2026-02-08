@@ -81,7 +81,8 @@ def _load_start_checker():
 
 def _print_controls(hero_type, keymap):
     print("\n================= 控制说明 =================")
-    print(f"移动: {keymap['move']} (释放移动: {keymap['stop']})")
+    stop_label = keymap["stop"] if keymap.get("stop") else "无"
+    print(f"移动: {keymap['move']} (释放移动: {stop_label})")
     print(
         f"攻击: {keymap['attack']} (普通攻击), "
         f"{keymap['skill1']}/{keymap['skill2']}/{keymap['skill3']} (技能1/2/3)"
@@ -91,10 +92,15 @@ def _print_controls(hero_type, keymap):
     print(f"小兵/塔: {keymap['attack_minion']} (攻击小兵), {keymap['attack_tower']} (攻击塔)")
     print(f"回城/恢复: {keymap['recall']} (回城), {keymap['recover']} (恢复)")
     print(
-        f"信息类(信号/升级): {keymap['signal_attack']}/{keymap['signal_retreat']} (发起进攻/开始撤退), "
-        f"{keymap['upgrade1']}/{keymap['upgrade2']}/{keymap['upgrade3']}/{keymap['upgrade4']} (升级技能)"
+        f"信息类(信号/升级): {keymap['signal_attack']}/{keymap['signal_retreat']}/{keymap['signal_collect']} "
+        f"(发起进攻/开始撤退/请求集合), {keymap['upgrade1']}/{keymap['upgrade2']}/"
+        f"{keymap['upgrade3']}/{keymap['upgrade4']} (升级技能)"
     )
-    print(f"退出: {keymap['quit']}")
+    print(f"购买装备: {keymap['buy1']} (装备1), {keymap['buy2']} (装备2)")
+    if keymap.get("quit"):
+        print(f"退出: {keymap['quit']}")
+    else:
+        print("退出: 无 (可用 Ctrl+C)")
     print("============================================\n")
 
 
@@ -133,7 +139,7 @@ def _update_action_from_key(key, action_state, hero_type, keymap):
         action_state.move_action = 1
         action_state.angle = move_angles[key]
         return "move"
-    if key == keymap["stop"].lower():
+    if keymap.get("stop") and key == keymap["stop"].lower():
         action_state.move_action = 0
         return "stop"
     if key == keymap["attack"].lower():
@@ -169,6 +175,9 @@ def _update_action_from_key(key, action_state, hero_type, keymap):
     if key == keymap["signal_retreat"].lower():
         action_state.info_action = 4
         return "signal_retreat"
+    if key == keymap["signal_collect"].lower():
+        action_state.info_action = 5
+        return "signal_collect"
     if key == keymap["upgrade1"].lower():
         action_state.info_action = 6
         return "upgrade1"
@@ -181,29 +190,38 @@ def _update_action_from_key(key, action_state, hero_type, keymap):
     if key == keymap["upgrade4"].lower() and hero_type == 4:
         action_state.info_action = 9
         return "upgrade4"
+    if key == keymap["buy1"].lower():
+        action_state.info_action = 1
+        return "buy1"
+    if key == keymap["buy2"].lower():
+        action_state.info_action = 2
+        return "buy2"
     return None
 
 
 def _load_keymap(path):
     default = {
         "move": ["w", "a", "s", "d"],
-        "stop": " ",
-        "attack": "j",
-        "skill1": "k",
-        "skill2": "l",
-        "skill3": "u",
+        "stop": "",
+        "attack": "mouse_right",
+        "skill1": "q",
+        "skill2": "e",
+        "skill3": "r",
         "skill4": "i",
-        "attack_minion": "1",
-        "attack_tower": "2",
-        "recall": "r",
-        "recover": "t",
-        "signal_attack": "g",
-        "signal_retreat": "h",
-        "upgrade1": "6",
-        "upgrade2": "7",
-        "upgrade3": "8",
-        "upgrade4": "9",
-        "quit": "q",
+        "attack_minion": "z",
+        "attack_tower": "x",
+        "recall": "b",
+        "recover": "c",
+        "signal_attack": "h",
+        "signal_retreat": "j",
+        "signal_collect": "k",
+        "upgrade1": "1",
+        "upgrade2": "2",
+        "upgrade3": "3",
+        "upgrade4": "6",
+        "buy1": "4",
+        "buy2": "5",
+        "quit": "",
     }
     if not os.path.exists(path):
         with open(path, "w", encoding="utf-8") as f:
@@ -217,6 +235,14 @@ def _load_keymap(path):
     if not isinstance(data["move"], list) or len(data["move"]) != 4:
         data["move"] = default["move"]
     return data
+
+
+def _mouse_right_pressed():
+    if os.name != "nt":
+        return False
+    import ctypes
+
+    return bool(ctypes.windll.user32.GetAsyncKeyState(0x02) & 0x8000)
 
 
 def _dispatch_action(tool, action_state):
@@ -277,11 +303,13 @@ def main():
                 break
 
             key = _read_key()
-            if key in ("q", "Q"):
+            if keymap.get("quit") and key and key.lower() == keymap["quit"].lower():
                 print("收到退出指令，结束录制。")
                 break
 
             _update_action_from_key(key, action_state, hero_type, keymap)
+            if keymap["attack"] == "mouse_right" and _mouse_right_pressed():
+                action_state.attack_action = 1
 
             now = time.time()
             if now - last_frame_time < 1.0 / args.fps:
